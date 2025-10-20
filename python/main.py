@@ -32,9 +32,17 @@ def main() -> None:
     Main function to parse arguments and run the image comparison.
     """
     parser = argparse.ArgumentParser(
-        description="Compare 512x512 units of an image."
+        description="Compare units of an image."
     )
     parser.add_argument("image", help="Path to the input image.")
+    parser.add_argument(
+        "--unit-size",
+        type=int,
+        nargs=2,
+        default=[512, 512],
+        metavar=("WIDTH", "HEIGHT"),
+        help="The size of the image units to compare (width height). Default: 512 512.",
+    )
     parser.add_argument(
         "-d",
         "--device",
@@ -112,10 +120,16 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    unit_size = (args.unit_size[0], args.unit_size[1])
+
     if args.device == "gpu":
-        find_different_units_gpu(args.image, args.threshold, method=args.method)
+        find_different_units_gpu(
+            args.image, args.threshold, unit_size=unit_size, method=args.method
+        )
     else:
-        find_different_units_cpu(args.image, args.threshold, method=args.method)
+        find_different_units_cpu(
+            args.image, args.threshold, unit_size=unit_size, method=args.method
+        )
 
 
 if __name__ == "__main__":
