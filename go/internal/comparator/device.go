@@ -17,7 +17,7 @@ func NewUnitComparator(device string) (UnitComparator, error) {
 	case "cpu":
 		return &CPUComparator{}, nil
 	case "cuda":
-		return nil, fmt.Errorf("CUDA support is not yet implemented")
+		return NewCUDAComparator()
 	case "mps":
 		return nil, fmt.Errorf("MPS support is not yet implemented")
 	default:

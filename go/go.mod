@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/lucasb-eyer/go-colorful v1.3.0
 	github.com/spf13/pflag v1.0.10
+	gocv.io/x/gocv v0.42.0
 	golang.org/x/image v0.32.0
 )
 
