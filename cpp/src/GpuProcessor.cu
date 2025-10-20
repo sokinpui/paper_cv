@@ -1,6 +1,6 @@
 #include "GpuProcessor.h"
 
-#ifdef USE_GPU
+#ifdef USE_CUDA
 
 #include <cuda_runtime.h>
 #include <iostream>
@@ -103,4 +103,4 @@ void GpuProcessor::calculateAverageColors(const std::vector<Tile>& tiles, std::v
     cudaFree(d_average_colors);
 }
 
-#endif // USE_GPU
+#endif // USE_CUDA

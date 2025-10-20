@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include <unistd.h>
+#include <getopt.h>
 #include <thread>
 #include <vector>
 #include <chrono>
@@ -11,9 +11,9 @@
 
 void printUsage() {
     std::cout << "Usage: ./image_comparator -i <input.bmp> [-t <num_threads>] [--gpu]\n"
-              << "  -i <input.bmp>    : Path to the input BMP image file.\n"
-              << "  -t <num_threads>  : Number of CPU threads for comparison. Defaults to hardware concurrency.\n"
-              << "  --gpu             : Enable GPU acceleration for color calculations.\n";
+              << "  -i, --input <input.bmp>    : Path to the input BMP image file.\n"
+              << "  -t, --threads <num_threads>: Number of CPU threads for comparison. Defaults to hardware concurrency.\n"
+              << "  --gpu                      : Enable GPU acceleration for color calculations.\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -21,8 +21,16 @@ int main(int argc, char* argv[]) {
     unsigned int num_threads = std::thread::hardware_concurrency();
     bool use_gpu = false;
 
+    static struct option long_options[] = {
+        {"input",   required_argument, 0, 'i'},
+        {"threads", required_argument, 0, 't'},
+        {"gpu",     no_argument,       0, 'g'},
+        {0, 0, 0, 0}
+    };
+
     int opt;
-    while ((opt = getopt(argc, argv, "i:t:")) != -1) {
+    int option_index = 0;
+    while ((opt = getopt_long(argc, argv, "i:t:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'i':
                 input_file = optarg;
@@ -30,17 +38,12 @@ int main(int argc, char* argv[]) {
             case 't':
                 num_threads = std::stoi(optarg);
                 break;
+            case 'g':
+                use_gpu = true;
+                break;
             case '?':
                 printUsage();
                 return 1;
-        }
-    }
-    
-    // A simple way to check for --gpu flag
-    for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "--gpu") {
-            use_gpu = true;
-            break;
         }
     }
 

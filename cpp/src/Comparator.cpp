@@ -1,5 +1,10 @@
 #include "Comparator.h"
+#ifdef USE_CUDA
 #include "GpuProcessor.h"
+#endif
+#ifdef USE_METAL
+#include "MetalProcessor.h"
+#endif
 #include <iostream>
 #include <numeric>
 #include <thread>
@@ -11,10 +16,14 @@ Comparator::Comparator(const std::vector<Tile>& tiles, bool use_gpu)
 }
 
 void Comparator::computeAverageColors() {
-#ifdef USE_GPU
+#if defined(USE_CUDA) || defined(USE_METAL)
     if (use_gpu_acceleration) {
         std::cout << "Computing average colors on GPU..." << std::endl;
+#if defined(USE_METAL)
+        MetalProcessor::calculateAverageColors(image_tiles, average_colors);
+#else // USE_CUDA
         GpuProcessor::calculateAverageColors(image_tiles, average_colors);
+#endif
         return;
     }
 #endif

@@ -1,15 +1,15 @@
-#ifndef GPU_PROCESSOR_H
-#define GPU_PROCESSOR_H
+#ifndef METAL_PROCESSOR_H
+#define METAL_PROCESSOR_H
 
-#ifdef USE_CUDA
+#ifdef USE_METAL
 
 #include "Tiler.h"
 #include "Color.h"
 #include <vector>
 
-namespace GpuProcessor {
+namespace MetalProcessor {
     void calculateAverageColors(const std::vector<Tile>& tiles, std::vector<Lab>& average_colors);
 }
 
-#endif // USE_CUDA
-#endif // GPU_PROCESSOR_H
+#endif // USE_METAL
+#endif // METAL_PROCESSOR_H
