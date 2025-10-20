@@ -46,6 +46,14 @@ func Run(cfg *Config) error {
 		go worker(&wg, jobs, results, cfg.Threshold, &processedPairs, comparator)
 	}
 
+	var saveWg sync.WaitGroup
+	saveWg.Add(1)
+	go func() {
+		defer saveWg.Done()
+		log.Println("Saving differing pairs...")
+		saveDifferentPairs(results, cfg.OutputDirectory)
+	}()
+
 	var spinnerWg sync.WaitGroup
 	spinnerWg.Add(1)
 	done := make(chan struct{})
@@ -89,8 +97,10 @@ func Run(cfg *Config) error {
 	}()
 
 	wg.Wait()
+	close(results)
 	close(done)
 	spinnerWg.Wait()
+	saveWg.Wait()
 
 	duration := time.Since(startTime)
 	log.Printf("Comparison of all units took %s.", duration)
@@ -101,10 +111,6 @@ func Run(cfg *Config) error {
 	fmt.Printf("Total processing time: %s\n", durationStyle.Render(fmt.Sprintf("%.4fs", duration.Seconds())))
 	fmt.Printf("Comparisons per second: %s\n", speedStyle.Render(fmt.Sprintf("%.2f", float64(totalPairs)/duration.Seconds())))
 
-	close(results)
-
-	log.Println("Saving differing pairs...")
-	saveDifferentPairs(results, cfg.OutputDirectory)
 	log.Println("Processing complete.")
 	return nil
 }
