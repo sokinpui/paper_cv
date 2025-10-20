@@ -1,129 +1,121 @@
 import argparse
-import itertools
-import multiprocessing
-import sys
-from functools import partial
-from typing import Tuple
 
-from tqdm import tqdm
-
-from color_comparison import (calculate_average_color, calculate_delta_e,
-                              is_cupy_available, is_mps_available)
-from image_processing import split_image
-
-# A global list to hold image blocks in memory.
-# This leverages copy-on-write memory on POSIX systems (Linux, macOS) for
-# efficient data sharing with child processes. For Windows, this approach is
-# less efficient as data is pickled and sent to each child process.
-BLOCKS_DATA = []
+from core import find_different_units_cpu, find_different_units_gpu
 
 
-def process_pair(indices: Tuple[int, int], device: str) -> Tuple[int, int, float]:
+def threshold_0_to_1(x: str) -> float:
+    """Argument type checker for a float between 0 and 1."""
+    try:
+        x_float = float(x)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{x!r} is not a floating-point literal")
+
+    if not (0.0 <= x_float <= 1.0):
+        raise argparse.ArgumentTypeError(f"{x_float} is not in range [0.0, 1.0]")
+    return x_float
+
+
+def threshold_0_to_255(x: str) -> float:
+    """Argument type checker for a float between 0 and 255."""
+    try:
+        x_float = float(x)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{x!r} is not a floating-point literal")
+
+    if not (0.0 <= x_float <= 255.0):
+        raise argparse.ArgumentTypeError(f"{x_float} is not in range [0.0, 255.0]")
+    return x_float
+
+
+def main() -> None:
     """
-    A worker function designed to be executed in a separate process. It compares
-    a single pair of image blocks and returns their color difference.
-
-    Args:
-        indices: A tuple containing the indices (i, j) of the blocks to compare
-                 from the global BLOCKS_DATA list.
-        device: The device to use for calculations ('cpu', 'cuda', 'mps').
-
-    Returns:
-        A tuple containing the original indices and the calculated Delta E value.
+    Main function to parse arguments and run the image comparison.
     """
-    i, j = indices
-    block1 = BLOCKS_DATA[i]
-    block2 = BLOCKS_DATA[j]
-
-    avg_color1 = calculate_average_color(block1, device=device)
-    avg_color2 = calculate_average_color(block2, device=device)
-
-    delta_e = calculate_delta_e(avg_color1, avg_color2)
-
-    return i, j, delta_e
-
-
-def create_argument_parser() -> argparse.ArgumentParser:
-    """Creates and configures the argument parser for the command-line interface."""
     parser = argparse.ArgumentParser(
-        description="Divide an image into blocks and compare all pairs for color difference.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="Compare 512x512 units of an image."
     )
-    parser.add_argument("image_path", help="Path to the input BMP image.")
+    parser.add_argument("image", help="Path to the input image.")
     parser.add_argument(
-        "-s", "--block-size", type=int, default=512,
-        help="The height and width of the blocks to divide the image into."
+        "-d",
+        "--device",
+        type=str,
+        default="gpu",
+        choices=["gpu", "cpu"],
+        help="Device to use for computation ('gpu' or 'cpu'). Default is 'gpu'.",
     )
-    parser.add_argument(
-        "-p", "--processes", type=int, default=multiprocessing.cpu_count(),
-        help="Number of worker processes to use."
-    )
-    gpu_group = parser.add_mutually_exclusive_group()
-    gpu_group.add_argument(
-        "--gpu", action="store_true",
-        help="Enable GPU acceleration with CuPy. Requires a compatible NVIDIA GPU and CUDA."
-    )
-    gpu_group.add_argument(
-        "--mps", action="store_true",
-        help="Enable GPU acceleration on Apple Silicon (MPS)."
-    )
-    return parser
 
+    # Create subparsers for each method
+    subparsers = parser.add_subparsers(
+        dest="method",
+        required=True,
+        title="Comparison Methods",
+        help="Choose a comparison method. Use 'python main.py <method> --help' for method-specific options.",
+    )
 
-def main():
-    """The main entry point of the application."""
-    parser = create_argument_parser()
+    # SSIM method
+    parser_ssim = subparsers.add_parser(
+        "ssim", help="Structural Similarity Index (SSIM) comparison."
+    )
+    parser_ssim.add_argument(
+        "-t",
+        "--threshold",
+        type=threshold_0_to_1,
+        default=0.9,
+        help="SSIM threshold (0.0 to 1.0). Pairs with a score BELOW this are considered different. Default: 0.9.",
+    )
+
+    # MSE method
+    parser_mse = subparsers.add_parser("mse", help="Mean Squared Error (MSE) comparison.")
+    parser_mse.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=100.0,
+        help="MSE threshold. Pairs with a score ABOVE this are different. Default: 100.0.",
+    )
+
+    # Color Histogram method
+    parser_hist = subparsers.add_parser(
+        "color_histogram", help="Color Histogram Intersection comparison."
+    )
+    parser_hist.add_argument(
+        "-t",
+        "--threshold",
+        type=threshold_0_to_1,
+        default=0.9,
+        help="Histogram intersection threshold (0.0 to 1.0). Pairs with a score BELOW this are considered different. Default: 0.9.",
+    )
+
+    # CIELAB method
+    parser_cielab = subparsers.add_parser(
+        "cielab", help="CIELAB Delta E comparison."
+    )
+    parser_cielab.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=2.3,
+        help="CIELAB Delta E threshold. A common value is 2.3 (Just Noticeable Difference). Pairs with a score ABOVE this are different. Default: 2.3.",
+    )
+
+    # PAD method
+    parser_pad = subparsers.add_parser(
+        "pad", help="Peak Absolute Difference (PAD) comparison."
+    )
+    parser_pad.add_argument(
+        "-t",
+        "--threshold",
+        type=threshold_0_to_255,
+        default=20.0,
+        help="PAD threshold (0-255). Pairs with a score ABOVE this are different. Default: 20.0.",
+    )
+
     args = parser.parse_args()
 
-    device = "cpu"
-    if args.gpu:
-        if not is_cupy_available():
-            print("Error: GPU acceleration requested, but CuPy is not available.", file=sys.stderr)
-            sys.exit(1)
-        device = "cuda"
-        print("Using CUDA for GPU acceleration.")
-    elif args.mps:
-        if not is_mps_available():
-            print("Error: MPS acceleration requested, but PyTorch with MPS support is not available.", file=sys.stderr)
-            sys.exit(1)
-        device = "mps"
-        print("Using MPS for GPU acceleration on Apple Silicon.")
-
-    print(f"Loading and splitting image: {args.image_path}")
-    blocks = split_image(args.image_path, args.block_size)
-
-    if not blocks:
-        print("Error: No blocks were created from the image. Exiting.", file=sys.stderr)
-        sys.exit(1)
-
-    num_blocks = len(blocks)
-    print(f"Image split into {num_blocks} blocks.")
-
-    global BLOCKS_DATA
-    BLOCKS_DATA = blocks
-
-    pairs = list(itertools.combinations(range(num_blocks), 2))
-
-    if not pairs:
-        print("Not enough blocks to form a pair for comparison. Exiting.")
-        return
-
-    print(f"Comparing {len(pairs)} pairs using {args.processes} processes...")
-
-    worker_func = partial(process_pair, device=device)
-
-    with multiprocessing.Pool(processes=args.processes) as pool:
-        results = list(tqdm(pool.imap_unordered(worker_func, pairs), total=len(pairs)))
-
-    results.sort(key=lambda x: x[2])
-
-    print("\nTop 5 most similar pairs (lowest color difference):")
-    for i, j, diff in results[:5]:
-        print(f"Blocks ({i}, {j}): Delta E = {diff:.2f}")
-
-    print("\nTop 5 most different pairs (highest color difference):")
-    for i, j, diff in reversed(results[-5:]):
-        print(f"Blocks ({i}, {j}): Delta E = {diff:.2f}")
+    if args.device == "gpu":
+        find_different_units_gpu(args.image, args.threshold, method=args.method)
+    else:
+        find_different_units_cpu(args.image, args.threshold, method=args.method)
 
 
 if __name__ == "__main__":

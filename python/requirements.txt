@@ -1,8 +1,6 @@
-numpy
 Pillow
-scikit-image
-tqdm
+numpy
 torch
-# For optional GPU support, install CuPy matching your CUDA version.
-# Example for CUDA 11.x:
-# cupy-cuda11x
+pytorch-msssim
+tqdm
+numba
