@@ -136,7 +136,6 @@ def save_different_pairs(
     print("Done saving.")
 
 
-_worker_ssim_module = None
 _worker_units_tensor = None
 _worker_positions_np = None
 _worker_threshold = None
@@ -151,14 +150,17 @@ def _init_worker_cpu(
     method: str,
 ):
     """Initializes a worker process for CPU-based comparison."""
-    global _worker_ssim_module, _worker_units_tensor, _worker_positions_np, _worker_threshold, _worker_method, _worker_comparison_func
-    if method == "ssim":
-        _worker_ssim_module = get_ssim_module()
+    global _worker_units_tensor, _worker_positions_np, _worker_threshold, _worker_method, _worker_comparison_func
     _worker_units_tensor = units_tensor
     _worker_positions_np = positions_np
     _worker_threshold = threshold
     _worker_method = method
-    _worker_comparison_func = get_comparison_function(method)
+    comparison_func = get_comparison_function(method)
+    if method == "ssim":
+        ssim_module = get_ssim_module()
+        _worker_comparison_func = lambda t1, t2: comparison_func(t1, t2, ssim_module)
+    else:
+        _worker_comparison_func = comparison_func
 
 
 def _compare_batch_worker_cpu(
@@ -166,7 +168,7 @@ def _compare_batch_worker_cpu(
 ) -> List[Tuple[int, int, Tuple[int, int], Tuple[int, int], float]]:
     """Worker function for CPU-based comparison on a batch of pairs."""
     # Uses global variables set by _init_worker_cpu
-    global _worker_ssim_module, _worker_units_tensor, _worker_positions_np, _worker_threshold, _worker_method, _worker_comparison_func
+    global _worker_units_tensor, _worker_positions_np, _worker_threshold, _worker_method, _worker_comparison_func
 
     if not batch_indices:
         return []
@@ -179,11 +181,7 @@ def _compare_batch_worker_cpu(
     tensor1 = _worker_units_tensor[indices1]
     tensor2 = _worker_units_tensor[indices2]
 
-    if _worker_method == "ssim":
-        scores = _worker_comparison_func(tensor1, tensor2, _worker_ssim_module)
-    else:
-        scores = _worker_comparison_func(tensor1, tensor2)
-
+    scores = _worker_comparison_func(tensor1, tensor2)
     diff_mask = get_diff_mask(scores, _worker_threshold, _worker_method)
     diff_indices_in_batch_tensor = torch.where(diff_mask)[0]
 
@@ -254,12 +252,16 @@ def find_different_units_gpu(
     indices_iter = itertools.combinations(range(len(image_units)), 2)
 
     different_pairs = []
+    all_results_tensors = []
     batch_size = 1024  # Adjustable batch size
+    positions_tensor = torch.from_numpy(positions_np).to(device)
 
     comparison_func = get_comparison_function(method)
-    ssim_module = None
-    if method == "ssim": #
-        ssim_module = get_ssim_module()
+    if method == "ssim":
+        ssim_module = get_ssim_module().to(device)
+        compare_op = lambda t1, t2: comparison_func(t1, t2, ssim_module)
+    else:
+        compare_op = comparison_func
 
     with tqdm(
         total=num_comparisons, desc="Processing", bar_format="{desc}: {n_fmt}/{total_fmt}"
@@ -277,29 +279,26 @@ def find_different_units_gpu(
             tensor1 = units_tensor[indices1]
             tensor2 = units_tensor[indices2]
 
-            if method == "ssim": #
-                if ssim_module.device != device: #
-                    ssim_module = ssim_module.to(device) #
-                scores = comparison_func(tensor1, tensor2, ssim_module)
-            else:
-                scores = comparison_func(tensor1, tensor2)
-
+            scores = compare_op(tensor1, tensor2)
             diff_mask = get_diff_mask(scores, threshold, method)
             diff_indices_in_batch_tensor = torch.where(diff_mask)[0]
-            if len(diff_indices_in_batch_tensor) > 0: #
-                results_tensor = _collect_diff_pairs_from_batch_gpu( #
-                    batch_indices_tensor, #
-                    torch.from_numpy(positions_np).to(device), #
-                    scores, #
+            if len(diff_indices_in_batch_tensor) > 0:
+                results_tensor = _collect_diff_pairs_from_batch_gpu(
+                    batch_indices_tensor,
+                    positions_tensor,
+                    scores,
                     diff_indices_in_batch_tensor,
                 )
-                results_np = results_tensor.cpu().numpy()
-                for row in results_np:
-                    idx1, idx2, p1r, p1c, p2r, p2c, score = row
-                    different_pairs.append(
-                        (int(idx1), int(idx2), (int(p1r), int(p1c)), (int(p2r), int(p2c)), score)
-                    )
+                all_results_tensors.append(results_tensor)
             pbar.update(len(batch_indices_tensor))
+
+    if all_results_tensors:
+        final_results_tensor = torch.cat(all_results_tensors)
+        results_np = final_results_tensor.cpu().numpy()
+        different_pairs = [
+            (int(r[0]), int(r[1]), (int(r[2]), int(r[3])), (int(r[4]), int(r[5])), r[6])
+            for r in results_np
+        ]
 
     end_time = time.time()
     elapsed_time = end_time - start_time
