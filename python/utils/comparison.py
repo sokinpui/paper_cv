@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from kornia.color import rgb_to_lab as kornia_rgb_to_lab
 from pytorch_msssim import SSIM
+from skimage.metrics import structural_similarity
 
 
 def get_ssim_module() -> SSIM:
@@ -33,6 +34,31 @@ def compare_ssim(
         torch.Tensor: A tensor containing the SSIM scores for each pair.
     """
     return ssim_module(tensor1, tensor2)
+
+
+def compare_ssim_cpu(
+    tensor1: torch.Tensor, tensor2: torch.Tensor, ssim_module: SSIM
+) -> torch.Tensor:
+    """
+    Computes the SSIM score between two batches of image tensors using scikit-image on the CPU.
+
+    Args:
+        tensor1 (torch.Tensor): The first batch of image tensors.
+        tensor2 (torch.Tensor): The second batch of image tensors.
+        ssim_module (SSIM): The SSIM module (not used, but kept for API consistency).
+
+    Returns:
+        torch.Tensor: A tensor containing the SSIM scores for each pair.
+    """
+    imgs1 = tensor1.permute(0, 2, 3, 1).numpy().astype(np.uint8)
+    imgs2 = tensor2.permute(0, 2, 3, 1).numpy().astype(np.uint8)
+
+    scores = [
+        structural_similarity(imgs1[i], imgs2[i], multichannel=True, data_range=255)
+        for i in range(imgs1.shape[0])
+    ]
+
+    return torch.tensor(scores, dtype=torch.float32)
 
 
 def rgb_to_lab(rgb_tensor: torch.Tensor) -> torch.Tensor:
@@ -273,7 +299,7 @@ def get_diff_mask(scores: torch.Tensor, threshold: float, method: str) -> torch.
     raise ValueError(f"Unsupported method: {method}")
 
 
-def get_comparison_function(method: str, **kwargs) -> Callable:
+def get_comparison_function(method: str, device: str = "gpu", **kwargs) -> Callable:
     """
     Returns the appropriate comparison function based on the method name.
 
@@ -285,6 +311,8 @@ def get_comparison_function(method: str, **kwargs) -> Callable:
         Callable: The comparison function.
     """
     if method == "ssim":
+        if device == "cpu":
+            return compare_ssim_cpu
         return compare_ssim
     if method == "cielab":
         return compare_cielab

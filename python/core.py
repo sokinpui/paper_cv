@@ -156,7 +156,9 @@ def _init_worker_cpu(
     _worker_positions_np = positions_np
     _worker_threshold = threshold
     _worker_method = method
-    comparison_func = get_comparison_function(method, **(method_params or {}))
+    comparison_func = get_comparison_function(
+        method, device="cpu", **(method_params or {})
+    )
     if method == "ssim":
         ssim_module = get_ssim_module()
         _worker_comparison_func = lambda t1, t2: comparison_func(t1, t2, ssim_module)

@@ -6,3 +6,4 @@ tqdm
 numba
 kornia
 opencv-python
+scikit-image
