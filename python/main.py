@@ -44,6 +44,13 @@ def main() -> None:
         help="The size of the image units to compare (width height). Default: 512 512.",
     )
     parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        help="Directory to save different image unit pairs. If not provided, no pairs will be saved.",
+    )
+    parser.add_argument(
         "-d",
         "--device",
         type=str,
@@ -70,30 +77,6 @@ def main() -> None:
         type=threshold_0_to_1,
         default=0.9,
         help="SSIM threshold (0.0 to 1.0). Pairs with a score BELOW this are considered different. Default: 0.9.",
-    )
-
-    # CIELAB method
-    parser_cielab = subparsers.add_parser(
-        "cielab", help="CIELAB Delta E comparison."
-    )
-    parser_cielab.add_argument(
-        "-t",
-        "--threshold",
-        type=float,
-        default=2.3,
-        help="CIELAB Delta E threshold. A common value is 2.3 (Just Noticeable Difference). Pairs with a score ABOVE this are different. Default: 2.3.",
-    )
-
-    # Mean Color Distance method
-    parser_mean_color = subparsers.add_parser(
-        "mean_color", help="Mean Color Distance comparison."
-    )
-    parser_mean_color.add_argument(
-        "-t",
-        "--threshold",
-        type=float,
-        default=10.0,
-        help="Mean Color Distance threshold. Pairs with a score ABOVE this are different. Default: 10.0.",
     )
 
     # Color Histogram method
@@ -139,7 +122,6 @@ def main() -> None:
         help="Color range distance threshold. Pairs with a score ABOVE this are considered different. Default: 0.2.",
     )
     args = parser.parse_args()
-
     unit_size = (args.unit_size[0], args.unit_size[1])
 
     method_params = {}
@@ -147,9 +129,18 @@ def main() -> None:
         method_params["k"] = args.num_clusters
 
     if args.device == "gpu":
-        find_different_units_gpu(args.image, args.threshold, unit_size=unit_size, method=args.method, method_params=method_params)
+        find_different_units_gpu(
+            args.image,
+            args.threshold,
+            unit_size=unit_size,
+            method=args.method,
+            method_params=method_params,
+            output_dir=args.output,
+        )
     else:
-        find_different_units_cpu(args.image, args.threshold, unit_size=unit_size, method=args.method, method_params=method_params)
+        find_different_units_cpu(
+            args.image, args.threshold, unit_size=unit_size, method=args.method, method_params=method_params, output_dir=args.output
+        )
 
 
 if __name__ == "__main__":

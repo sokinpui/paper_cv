@@ -48,25 +48,6 @@ def rgb_to_lab(rgb_tensor: torch.Tensor) -> torch.Tensor:
     return kornia_rgb_to_lab(rgb_normalized)
 
 
-def compare_mean_color_distance(
-    tensor1: torch.Tensor, tensor2: torch.Tensor
-) -> torch.Tensor:
-    """
-    Computes the Euclidean distance between the mean colors of two batches of image tensors.
-
-    Args:
-        tensor1 (torch.Tensor): The first batch of image tensors (B, C, H, W).
-        tensor2 (torch.Tensor): The second batch of image tensors (B, C, H, W).
-
-    Returns:
-        torch.Tensor: A tensor of shape (B,) containing the mean color distance for each pair.
-    """
-    mean1 = torch.mean(tensor1, dim=[2, 3])
-    mean2 = torch.mean(tensor2, dim=[2, 3])
-    distance = torch.sqrt(torch.sum((mean1 - mean2) ** 2, dim=1))
-    return distance
-
-
 def compare_color_histogram(
     tensor1: torch.Tensor, tensor2: torch.Tensor
 ) -> torch.Tensor:
@@ -174,11 +155,11 @@ HSV_COLOR_RANGES_DICT = {
     "green": [([40, 100, 100], [80, 255, 255])],
     "cyan": [([80, 100, 100], [100, 255, 255])],
     "blue": [([100, 100, 100], [140, 255, 255])],
-    "purple": [([140, 50, 100], [160, 255, 255])], # A bit more relaxed S for purple
+    "purple": [([140, 50, 100], [160, 255, 255])],  # A bit more relaxed S for purple
     "magenta": [([160, 100, 100], [170, 255, 255])],
-    "white": [([0, 0, 200], [179, 30, 255])], # Low S, High V
-    "black": [([0, 0, 0], [179, 255, 50])],   # Low V
-    "gray": [([0, 0, 50], [179, 50, 200])],   # Low S, Mid V
+    "white": [([0, 0, 200], [179, 30, 255])],  # Low S, High V
+    "black": [([0, 0, 0], [179, 255, 50])],  # Low V
+    "gray": [([0, 0, 50], [179, 50, 200])],  # Low S, Mid V
 }
 
 
@@ -282,8 +263,6 @@ def get_comparison_function(method: str, **kwargs) -> Callable:
     """
     if method == "ssim":
         return compare_ssim
-    if method == "mean_color":
-        return compare_mean_color_distance
     if method == "color_histogram":
         return compare_color_histogram
     if method == "color_clustering":

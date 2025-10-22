@@ -104,7 +104,7 @@ def _collect_diff_pairs_from_batch_gpu(
 def save_different_pairs(
     different_pairs: List[Tuple[int, int, Tuple[int, int], Tuple[int, int], float]],
     units: List[np.ndarray],
-    output_dir: str = "output",
+    output_dir: str,
 ) -> None:
     """
     Saves the different image unit pairs to the specified directory using multiple threads.
@@ -208,6 +208,7 @@ def find_different_units_gpu(
     unit_size: Tuple[int, int] = (512, 512),
     method: str = "ssim",
     method_params: dict = None,
+    output_dir: str = None,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using GPU.
@@ -309,8 +310,9 @@ def find_different_units_gpu(
     if not different_pairs:
         print("No significant differences found between any units.")
     else:
-        print(f"\nFound {len(different_pairs)} different pairs:")
-        save_different_pairs(different_pairs, units)
+        print(f"\nFound {len(different_pairs)} different pairs.")
+        if output_dir:
+            save_different_pairs(different_pairs, units, output_dir)
 
 
 def find_different_units_cpu(
@@ -319,6 +321,7 @@ def find_different_units_cpu(
     unit_size: Tuple[int, int] = (512, 512),
     method: str = "ssim",
     method_params: dict = None,
+    output_dir: str = None,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using CPU
@@ -398,5 +401,6 @@ def find_different_units_cpu(
     if not different_pairs:
         print("No significant differences found between any units.")
     else:
-        print(f"\nFound {len(different_pairs)} different pairs:")
-        save_different_pairs(different_pairs, units)
+        print(f"\nFound {len(different_pairs)} different pairs.")
+        if output_dir:
+            save_different_pairs(different_pairs, units, output_dir)
