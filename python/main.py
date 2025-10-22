@@ -72,28 +72,6 @@ def main() -> None:
         help="SSIM threshold (0.0 to 1.0). Pairs with a score BELOW this are considered different. Default: 0.9.",
     )
 
-    # MSE method
-    parser_mse = subparsers.add_parser("mse", help="Mean Squared Error (MSE) comparison.")
-    parser_mse.add_argument(
-        "-t",
-        "--threshold",
-        type=float,
-        default=100.0,
-        help="MSE threshold. Pairs with a score ABOVE this are different. Default: 100.0.",
-    )
-
-    # Color Histogram method
-    parser_hist = subparsers.add_parser(
-        "color_histogram", help="Color Histogram Intersection comparison."
-    )
-    parser_hist.add_argument(
-        "-t",
-        "--threshold",
-        type=threshold_0_to_1,
-        default=0.9,
-        help="Histogram intersection threshold (0.0 to 1.0). Pairs with a score BELOW this are considered different. Default: 0.9.",
-    )
-
     # CIELAB method
     parser_cielab = subparsers.add_parser(
         "cielab", help="CIELAB Delta E comparison."
@@ -104,18 +82,6 @@ def main() -> None:
         type=float,
         default=2.3,
         help="CIELAB Delta E threshold. A common value is 2.3 (Just Noticeable Difference). Pairs with a score ABOVE this are different. Default: 2.3.",
-    )
-
-    # PAD method
-    parser_pad = subparsers.add_parser(
-        "pad", help="Peak Absolute Difference (PAD) comparison."
-    )
-    parser_pad.add_argument(
-        "-t",
-        "--threshold",
-        type=threshold_0_to_255,
-        default=20.0,
-        help="PAD threshold (0-255). Pairs with a score ABOVE this are different. Default: 20.0.",
     )
 
     # Mean Color Distance method

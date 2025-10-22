@@ -4,3 +4,4 @@ torch
 pytorch-msssim
 tqdm
 numba
+kornia
