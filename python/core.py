@@ -206,6 +206,7 @@ def find_different_units_gpu(
     threshold: float = 0.9,
     unit_size: Tuple[int, int] = (512, 512),
     method: str = "ssim",
+    method_params: dict = None,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using GPU.
@@ -216,6 +217,7 @@ def find_different_units_gpu(
                          considered different.
         unit_size (tuple): The size of the image units to compare.
         method (str): The comparison method to use ('ssim', 'mse', 'color_histogram').
+        method_params (dict): Optional dictionary of parameters for the comparison method.
     """
     image_units = divide_image_into_units(image_path, unit_size)
 
@@ -230,15 +232,9 @@ def find_different_units_gpu(
         print("Error: No GPU (CUDA or MPS) available.")
         return
 
-    print(f"Using device: {device}")
-
     print(f"Divided image into {len(image_units)} units.")
-    print(f"Comparing units with method '{method}' and threshold: {threshold}")
 
     num_comparisons = len(image_units) * (len(image_units) - 1) // 2
-    print(f"Total comparision to be done: {num_comparisons}")
-
-    print("This may take a while...")
 
     start_time = time.time()
     positions = [pos for pos, unit in image_units]
@@ -256,7 +252,7 @@ def find_different_units_gpu(
     batch_size = 1024  # Adjustable batch size
     positions_tensor = torch.from_numpy(positions_np).to(device)
 
-    comparison_func = get_comparison_function(method)
+    comparison_func = get_comparison_function(method, **(method_params or {}))
     if method == "ssim":
         ssim_module = get_ssim_module().to(device)
         compare_op = lambda t1, t2: comparison_func(t1, t2, ssim_module)
@@ -264,15 +260,16 @@ def find_different_units_gpu(
         compare_op = comparison_func
 
     with tqdm(
-        total=num_comparisons, desc="Processing", bar_format="{desc}: {n_fmt}/{total_fmt}"
+        total=num_comparisons,
+        desc="Processing",
+        bar_format="{desc} {n_fmt}/{total_fmt} pairs processed. ({rate_fmt})",
     ) as pbar:
-        while True:
-            batch_indices = list(itertools.islice(indices_iter, batch_size))
-            batch_indices_tensor = torch.tensor(batch_indices, dtype=torch.int32, device=device)
-
-            if len(batch_indices_tensor) == 0:
-                break
-
+        for batch_indices in iter(
+            lambda: list(itertools.islice(indices_iter, batch_size)), []
+        ):
+            batch_indices_tensor = torch.tensor(
+                batch_indices, dtype=torch.int32, device=device
+            )
             indices1 = batch_indices_tensor[:, 0]
             indices2 = batch_indices_tensor[:, 1]
 
@@ -291,6 +288,7 @@ def find_different_units_gpu(
                 )
                 all_results_tensors.append(results_tensor)
             pbar.update(len(batch_indices_tensor))
+        pbar.set_description("✓ Comparison complete.")
 
     if all_results_tensors:
         final_results_tensor = torch.cat(all_results_tensors)
@@ -302,16 +300,15 @@ def find_different_units_gpu(
 
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"Total comparision to be done: {num_comparisons}")
-    print(f"Total comparison time: {elapsed_time:.2f} seconds.")
+    print(f"Total processing time: {elapsed_time:.4f}s")
 
     if num_comparisons > 0 and elapsed_time > 0:
-        print(f"Comparsion per second: {num_comparisons/elapsed_time:.2f}.")
+        print(f"Comparisons per second: {num_comparisons/elapsed_time:.2f}")
 
     if not different_pairs:
         print("No significant differences found between any units.")
     else:
-        print(f"\nFound {len(different_pairs)} pairs with SSIM below {threshold}:")
+        print(f"\nFound {len(different_pairs)} different pairs:")
         save_different_pairs(different_pairs, units)
 
 
@@ -320,6 +317,7 @@ def find_different_units_cpu(
     threshold: float = 0.9,
     unit_size: Tuple[int, int] = (512, 512),
     method: str = "ssim",
+    method_params: dict = None,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using CPU
@@ -331,21 +329,16 @@ def find_different_units_cpu(
                          considered different.
         unit_size (tuple): The size of the image units to compare.
         method (str): The comparison method to use ('ssim', 'mse', 'color_histogram').
+        method_params (dict): Optional dictionary of parameters for the comparison method.
     """
     image_units = divide_image_into_units(image_path, unit_size)
 
     if not image_units:
         return
 
-    print("Using device: CPU")
-
     print(f"Divided image into {len(image_units)} units.")
-    print(f"Comparing units with method '{method}' and threshold: {threshold}")
 
     num_comparisons = len(image_units) * (len(image_units) - 1) // 2
-    print(f"Total comparision to be done: {num_comparisons}")
-
-    print("This may take a while...")
 
     start_time = time.time()
     positions = [pos for pos, unit in image_units]
@@ -369,6 +362,7 @@ def find_different_units_cpu(
         positions_np=positions_np,
         threshold=threshold,
         method=method,
+        method_params=method_params,
     )
 
     with multiprocessing.Pool(
@@ -377,13 +371,12 @@ def find_different_units_cpu(
         with tqdm(
             total=num_comparisons,
             desc="Processing",
-            bar_format="{desc}: {n_fmt}/{total_fmt}",
+            bar_format="{desc} {n_fmt}/{total_fmt} pairs processed. ({rate_fmt})",
         ) as pbar:
             results = []
-            while True:
-                batch = list(itertools.islice(combinations_iter, batch_size))
-                if not batch:
-                    break
+            for batch in iter(
+                lambda: list(itertools.islice(combinations_iter, batch_size)), []
+            ):
                 res = pool.apply_async(_compare_batch_worker_cpu, (batch,))
                 results.append((res, len(batch)))
 
@@ -392,17 +385,17 @@ def find_different_units_cpu(
                 if result_batch:
                     different_pairs.extend(result_batch)
                 pbar.update(length)
+            pbar.set_description("✓ Comparison complete.")
 
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"Total comparision to be done: {num_comparisons}")
-    print(f"Total comparison time: {elapsed_time:.2f} seconds.")
+    print(f"Total processing time: {elapsed_time:.4f}s")
 
     if num_comparisons > 0 and elapsed_time > 0:
-        print(f"Comparsion per second: {num_comparisons/elapsed_time:.2f}.")
+        print(f"Comparisons per second: {num_comparisons/elapsed_time:.2f}")
 
     if not different_pairs:
         print("No significant differences found between any units.")
     else:
-        print(f"\nFound {len(different_pairs)} pairs with SSIM below {threshold}:")
+        print(f"\nFound {len(different_pairs)} different pairs:")
         save_different_pairs(different_pairs, units)

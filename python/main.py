@@ -96,18 +96,49 @@ def main() -> None:
         help="Mean Color Distance threshold. Pairs with a score ABOVE this are different. Default: 10.0.",
     )
 
+    # Color Histogram method
+    parser_color_histogram = subparsers.add_parser(
+        "color_histogram", help="Color Histogram comparison using OpenCV."
+    )
+    parser_color_histogram.add_argument(
+        "-t",
+        "--threshold",
+        type=threshold_0_to_1,
+        default=0.9,
+        help="Histogram correlation threshold (0.0 to 1.0). Pairs with a score BELOW this are considered different. Default: 0.9.",
+    )
+
+    # Color Clustering method
+    parser_clustering = subparsers.add_parser(
+        "color_clustering", help="Color Clustering (K-means) comparison."
+    )
+    parser_clustering.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=20.0,
+        help="Palette distance threshold. Pairs with a score ABOVE this are different. Default: 20.0.",
+    )
+    parser_clustering.add_argument(
+        "-k",
+        "--num-clusters",
+        type=int,
+        default=5,
+        help="Number of dominant colors (clusters) to find. Default: 5.",
+    )
+
     args = parser.parse_args()
 
     unit_size = (args.unit_size[0], args.unit_size[1])
 
+    method_params = {}
+    if args.method == "color_clustering":
+        method_params["k"] = args.num_clusters
+
     if args.device == "gpu":
-        find_different_units_gpu(
-            args.image, args.threshold, unit_size=unit_size, method=args.method
-        )
+        find_different_units_gpu(args.image, args.threshold, unit_size=unit_size, method=args.method, method_params=method_params)
     else:
-        find_different_units_cpu(
-            args.image, args.threshold, unit_size=unit_size, method=args.method
-        )
+        find_different_units_cpu(args.image, args.threshold, unit_size=unit_size, method=args.method, method_params=method_params)
 
 
 if __name__ == "__main__":

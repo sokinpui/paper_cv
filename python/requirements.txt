@@ -5,3 +5,4 @@ pytorch-msssim
 tqdm
 numba
 kornia
+opencv-python
