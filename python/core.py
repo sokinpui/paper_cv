@@ -148,6 +148,7 @@ def _init_worker_cpu(
     positions_np: np.ndarray,
     threshold: float,
     method: str,
+    method_params: dict = None,
 ):
     """Initializes a worker process for CPU-based comparison."""
     global _worker_units_tensor, _worker_positions_np, _worker_threshold, _worker_method, _worker_comparison_func
@@ -155,7 +156,7 @@ def _init_worker_cpu(
     _worker_positions_np = positions_np
     _worker_threshold = threshold
     _worker_method = method
-    comparison_func = get_comparison_function(method)
+    comparison_func = get_comparison_function(method, **(method_params or {}))
     if method == "ssim":
         ssim_module = get_ssim_module()
         _worker_comparison_func = lambda t1, t2: comparison_func(t1, t2, ssim_module)

@@ -127,6 +127,17 @@ def main() -> None:
         help="Number of dominant colors (clusters) to find. Default: 5.",
     )
 
+    # Color Range HSV method
+    parser_color_range_hsv = subparsers.add_parser(
+        "color_range_hsv", help="Color Range Detection in HSV color space using OpenCV."
+    )
+    parser_color_range_hsv.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=0.2, # A lower L1 distance means more similar, so we look for scores ABOVE this.
+        help="Color range distance threshold. Pairs with a score ABOVE this are considered different. Default: 0.2.",
+    )
     args = parser.parse_args()
 
     unit_size = (args.unit_size[0], args.unit_size[1])
