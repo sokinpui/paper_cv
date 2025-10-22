@@ -166,6 +166,25 @@ def compare_pad(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     max_diff, _ = torch.max(flattened_diff, dim=1)
     return max_diff
 
+
+def compare_mean_color_distance(
+    tensor1: torch.Tensor, tensor2: torch.Tensor
+) -> torch.Tensor:
+    """
+    Computes the Euclidean distance between the mean colors of two batches of image tensors.
+
+    Args:
+        tensor1 (torch.Tensor): The first batch of image tensors (B, C, H, W).
+        tensor2 (torch.Tensor): The second batch of image tensors (B, C, H, W).
+
+    Returns:
+        torch.Tensor: A tensor of shape (B,) containing the mean color distance for each pair.
+    """
+    mean1 = torch.mean(tensor1, dim=[2, 3])
+    mean2 = torch.mean(tensor2, dim=[2, 3])
+    distance = torch.sqrt(torch.sum((mean1 - mean2) ** 2, dim=1))
+    return distance
+
 def get_diff_mask(
     scores: torch.Tensor, threshold: float, method: str
 ) -> torch.Tensor:
@@ -182,7 +201,7 @@ def get_diff_mask(
     """
     if method in ["ssim", "color_histogram"]:
         return scores < threshold
-    if method in ["mse", "cielab", "pad"]:
+    if method in ["mse", "cielab", "pad", "mean_color"]:
         return scores > threshold
     raise ValueError(f"Unsupported method: {method}")
 
@@ -209,4 +228,6 @@ def get_comparison_function(
         return compare_cielab
     if method == "pad":
         return compare_pad
+    if method == "mean_color":
+        return compare_mean_color_distance
     raise ValueError(f"Unsupported method: {method}")

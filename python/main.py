@@ -118,6 +118,18 @@ def main() -> None:
         help="PAD threshold (0-255). Pairs with a score ABOVE this are different. Default: 20.0.",
     )
 
+    # Mean Color Distance method
+    parser_mean_color = subparsers.add_parser(
+        "mean_color", help="Mean Color Distance comparison."
+    )
+    parser_mean_color.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=10.0,
+        help="Mean Color Distance threshold. Pairs with a score ABOVE this are different. Default: 10.0.",
+    )
+
     args = parser.parse_args()
 
     unit_size = (args.unit_size[0], args.unit_size[1])
