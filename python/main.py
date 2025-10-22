@@ -79,6 +79,18 @@ def main() -> None:
         help="SSIM threshold (0.0 to 1.0). Pairs with a score BELOW this are considered different. Default: 0.9.",
     )
 
+    # CIELAB method
+    parser_cielab = subparsers.add_parser(
+        "cielab", help="Perceptually Uniform Color Spaces (CIELAB) comparison."
+    )
+    parser_cielab.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=10.0,
+        help="CIELAB distance threshold (Delta E*). Pairs with a score ABOVE this are different. Default: 10.0.",
+    )
+
     # Color Histogram method
     parser_color_histogram = subparsers.add_parser(
         "color_histogram", help="Color Histogram comparison using OpenCV."

@@ -48,6 +48,29 @@ def rgb_to_lab(rgb_tensor: torch.Tensor) -> torch.Tensor:
     return kornia_rgb_to_lab(rgb_normalized)
 
 
+def compare_cielab(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
+    """
+    Compares two batches of image tensors based on the average color difference
+    in the CIELAB color space (Delta E*).
+
+    Args:
+        tensor1 (torch.Tensor): The first batch of image tensors (B, C, H, W).
+        tensor2 (torch.Tensor): The second batch of image tensors (B, C, H, W).
+
+    Returns:
+        torch.Tensor: A tensor of shape (B,) containing the average Delta E*
+                      distance for each pair. Higher score means more different.
+    """
+    lab1 = rgb_to_lab(tensor1)
+    lab2 = rgb_to_lab(tensor2)
+
+    mean_lab1 = torch.mean(lab1, dim=[2, 3])
+    mean_lab2 = torch.mean(lab2, dim=[2, 3])
+
+    delta_e = torch.linalg.norm(mean_lab1 - mean_lab2, dim=1)
+    return delta_e
+
+
 def compare_color_histogram(
     tensor1: torch.Tensor, tensor2: torch.Tensor
 ) -> torch.Tensor:
@@ -263,6 +286,8 @@ def get_comparison_function(method: str, **kwargs) -> Callable:
     """
     if method == "ssim":
         return compare_ssim
+    if method == "cielab":
+        return compare_cielab
     if method == "color_histogram":
         return compare_color_histogram
     if method == "color_clustering":
