@@ -54,7 +54,7 @@ def compare_ssim_cpu(
     imgs2 = tensor2.permute(0, 2, 3, 1).numpy().astype(np.uint8)
 
     scores = [
-        structural_similarity(imgs1[i], imgs2[i], multichannel=True, data_range=255)
+        structural_similarity(imgs1[i], imgs2[i], channel_axis=-1, data_range=255)
         for i in range(imgs1.shape[0])
     ]
 
