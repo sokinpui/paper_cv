@@ -294,7 +294,7 @@ def get_diff_mask(scores: torch.Tensor, threshold: float, method: str) -> torch.
     """
     if method in ["ssim", "color_histogram"]:
         return scores < threshold
-    if method in ["cielab", "mean_color", "color_clustering", "color_range_hsv"]:
+    if method in ["cielab", "color_clustering", "color_range_hsv"]:
         return scores > threshold
     raise ValueError(f"Unsupported method: {method}")
 

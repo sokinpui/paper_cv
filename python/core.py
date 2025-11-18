@@ -136,6 +136,66 @@ def save_different_pairs(
     print("Done saving.")
 
 
+def _analyze_and_print_unit_stats(
+    scores_per_unit: List[List[float]], method: str, positions: List[Tuple[int, int]]
+):
+    """
+    Calculates and prints statistical analysis for each unit based on its comparison scores.
+
+    Args:
+        scores_per_unit (List[List[float]]): A list where each inner list contains the
+                                             comparison scores for a single unit against all others.
+        method (str): The comparison method used, to determine score interpretation.
+        positions (List[Tuple[int, int]]): The (row, col) positions of each unit.
+    """
+    print("\n--- Unit-wise Statistical Analysis ---")
+    print(f"Analysis based on '{method}' scores.")
+    higher_is_more_different = method in [
+        "cielab",
+        "color_clustering",
+        "color_range_hsv",
+    ]
+    if higher_is_more_different:
+        print("Note: Higher average scores indicate greater difference from other units.")
+    else:
+        print("Note: Lower average scores indicate greater difference from other units.")
+
+    print(
+        "\n{:<10} {:<15} {:<15} {:<15} {:<15} {:<15} {:<15}".format(
+            "Unit", "Position", "Mean", "Median", "Std Dev", "Min Score", "Max Score"
+        )
+    )
+    print("-" * 105)
+
+    stats = []
+    for i, scores in enumerate(scores_per_unit):
+        if not scores:
+            continue
+        scores_np = np.array(scores)
+        stats.append(
+            {
+                "unit": i,
+                "pos": positions[i],
+                "mean": np.mean(scores_np),
+                "median": np.median(scores_np),
+                "std": np.std(scores_np),
+                "min": np.min(scores_np),
+                "max": np.max(scores_np),
+            }
+        )
+
+    sort_reverse = higher_is_more_different
+    sorted_stats = sorted(stats, key=lambda x: x["mean"], reverse=sort_reverse)
+
+    for stat in sorted_stats:
+        pos_str = f"({stat['pos'][0]}, {stat['pos'][1]})"
+        print(
+            "{:<10} {:<15} {:<15.4f} {:<15.4f} {:<15.4f} {:<15.4f} {:<15.4f}".format(
+                stat["unit"], pos_str, stat["mean"], stat["median"], stat["std"], stat["min"], stat["max"]
+            )
+        )
+
+
 _worker_units_tensor = None
 _worker_positions_np = None
 _worker_threshold = None
@@ -168,13 +228,14 @@ def _init_worker_cpu(
 
 def _compare_batch_worker_cpu(
     batch_indices: List[Tuple[int, int]],
-) -> List[Tuple[int, int, Tuple[int, int], Tuple[int, int], float]]:
+    analyze_units: bool,
+) -> Tuple[List[Tuple], List[Tuple]]:
     """Worker function for CPU-based comparison on a batch of pairs."""
     # Uses global variables set by _init_worker_cpu
     global _worker_units_tensor, _worker_positions_np, _worker_threshold, _worker_method, _worker_comparison_func
 
     if not batch_indices:
-        return []
+        return [], []
 
     batch_indices_np = np.array(batch_indices, dtype=np.int32)
 
@@ -201,7 +262,16 @@ def _compare_batch_worker_cpu(
             different_pairs_batch.append(
                 (int(idx1), int(idx2), (int(p1r), int(p1c)), (int(p2r), int(p2c)), score)
             )
-    return different_pairs_batch
+
+    all_scores_info = []
+    if analyze_units:
+        scores_np = scores.numpy()
+        for i in range(len(batch_indices_np)):
+            idx1, idx2 = batch_indices_np[i]
+            score = scores_np[i]
+            all_scores_info.append((int(idx1), int(idx2), score))
+
+    return different_pairs_batch, all_scores_info
 
 
 def find_different_units_gpu(
@@ -211,6 +281,7 @@ def find_different_units_gpu(
     method: str = "ssim",
     method_params: dict = None,
     output_dir: str = None,
+    analyze_units: bool = False,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using GPU.
@@ -222,6 +293,8 @@ def find_different_units_gpu(
         unit_size (tuple): The size of the image units to compare.
         method (str): The comparison method to use ('ssim', 'mse', 'color_histogram').
         method_params (dict): Optional dictionary of parameters for the comparison method.
+        output_dir (str): Directory to save different pairs.
+        analyze_units (bool): If True, perform and print a statistical analysis for each unit.
     """
     image_units = divide_image_into_units(image_path, unit_size)
 
@@ -236,7 +309,8 @@ def find_different_units_gpu(
         print("Error: No GPU (CUDA or MPS) available.")
         return
 
-    print(f"Divided image into {len(image_units)} units.")
+    num_units = len(image_units)
+    print(f"Divided image into {num_units} units.")
 
     num_comparisons = len(image_units) * (len(image_units) - 1) // 2
 
@@ -249,11 +323,12 @@ def find_different_units_gpu(
     # (N, H, W, C) -> (N, C, H, W)
     units_tensor = units_tensor.permute(0, 3, 1, 2)
 
-    indices_iter = itertools.combinations(range(len(image_units)), 2)
+    indices_iter = itertools.combinations(range(num_units), 2)
 
     different_pairs = []
     all_results_tensors = []
     batch_size = 1024  # Adjustable batch size
+    scores_per_unit = [[] for _ in range(num_units)] if analyze_units else None
     positions_tensor = torch.from_numpy(positions_np).to(device)
 
     comparison_func = get_comparison_function(method, **(method_params or {}))
@@ -281,6 +356,16 @@ def find_different_units_gpu(
             tensor2 = units_tensor[indices2]
 
             scores = compare_op(tensor1, tensor2)
+
+            if analyze_units:
+                batch_indices_np = batch_indices_tensor.cpu().numpy()
+                scores_np = scores.cpu().numpy()
+                for k in range(len(batch_indices_np)):
+                    idx1, idx2 = batch_indices_np[k]
+                    score = scores_np[k]
+                    scores_per_unit[idx1].append(score)
+                    scores_per_unit[idx2].append(score)
+
             diff_mask = get_diff_mask(scores, threshold, method)
             diff_indices_in_batch_tensor = torch.where(diff_mask)[0]
             if len(diff_indices_in_batch_tensor) > 0:
@@ -301,6 +386,9 @@ def find_different_units_gpu(
             (int(r[0]), int(r[1]), (int(r[2]), int(r[3])), (int(r[4]), int(r[5])), r[6])
             for r in results_np
         ]
+
+    if analyze_units:
+        _analyze_and_print_unit_stats(scores_per_unit, method, positions)
 
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -324,6 +412,7 @@ def find_different_units_cpu(
     method: str = "ssim",
     method_params: dict = None,
     output_dir: str = None,
+    analyze_units: bool = False,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using CPU
@@ -336,14 +425,16 @@ def find_different_units_cpu(
         unit_size (tuple): The size of the image units to compare.
         method (str): The comparison method to use ('ssim', 'mse', 'color_histogram').
         method_params (dict): Optional dictionary of parameters for the comparison method.
+        output_dir (str): Directory to save different pairs.
+        analyze_units (bool): If True, perform and print a statistical analysis for each unit.
     """
     image_units = divide_image_into_units(image_path, unit_size)
 
     if not image_units:
         return
 
-    print(f"Divided image into {len(image_units)} units.")
-
+    num_units = len(image_units)
+    print(f"Divided image into {num_units} units.")
     num_comparisons = len(image_units) * (len(image_units) - 1) // 2
 
     start_time = time.time()
@@ -358,9 +449,11 @@ def find_different_units_cpu(
     num_processes = multiprocessing.cpu_count()
     batch_size = 256
 
-    combinations_iter = itertools.combinations(range(len(image_units)), 2)
+    combinations_iter = itertools.combinations(range(num_units), 2)
 
     different_pairs = []
+    scores_per_unit = [[] for _ in range(num_units)] if analyze_units else None
+    all_scores_info = [] if analyze_units else None
 
     initializer = partial(
         _init_worker_cpu,
@@ -383,15 +476,23 @@ def find_different_units_cpu(
             for batch in iter(
                 lambda: list(itertools.islice(combinations_iter, batch_size)), []
             ):
-                res = pool.apply_async(_compare_batch_worker_cpu, (batch,))
+                res = pool.apply_async(_compare_batch_worker_cpu, (batch, analyze_units))
                 results.append((res, len(batch)))
 
             for res, length in results:
-                result_batch = res.get()
+                result_batch, scores_info_batch = res.get()
                 if result_batch:
                     different_pairs.extend(result_batch)
+                if analyze_units and scores_info_batch:
+                    all_scores_info.extend(scores_info_batch)
                 pbar.update(length)
             pbar.set_description("✓ Comparison complete.")
+
+    if analyze_units:
+        for idx1, idx2, score in all_scores_info:
+            scores_per_unit[idx1].append(score)
+            scores_per_unit[idx2].append(score)
+        _analyze_and_print_unit_stats(scores_per_unit, method, positions)
 
     end_time = time.time()
     elapsed_time = end_time - start_time

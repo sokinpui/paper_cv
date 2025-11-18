@@ -58,6 +58,11 @@ def main() -> None:
         choices=["gpu", "cpu"],
         help="Device to use for computation ('gpu' or 'cpu'). Default is 'gpu'.",
     )
+    parser.add_argument(
+        "--analyze-units",
+        action="store_true",
+        help="Perform and display a statistical analysis of each unit against all others.",
+    )
 
     # Create subparsers for each method
     subparsers = parser.add_subparsers(
@@ -148,10 +153,17 @@ def main() -> None:
             method=args.method,
             method_params=method_params,
             output_dir=args.output,
+            analyze_units=args.analyze_units,
         )
     else:
         find_different_units_cpu(
-            args.image, args.threshold, unit_size=unit_size, method=args.method, method_params=method_params, output_dir=args.output
+            args.image,
+            args.threshold,
+            unit_size=unit_size,
+            method=args.method,
+            method_params=method_params,
+            output_dir=args.output,
+            analyze_units=args.analyze_units,
         )
 
 
