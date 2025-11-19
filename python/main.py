@@ -31,12 +31,11 @@ def main() -> None:
     """
     Main function to parse arguments and run the image comparison.
     """
-    parser = argparse.ArgumentParser(
-        description="Compare units of an image."
-    )
+    parser = argparse.ArgumentParser(description="Compare units of an image.")
     parser.add_argument("image", help="Path to the input image.")
     parser.add_argument(
         "--unit-size",
+        "-u",
         type=int,
         nargs=2,
         default=[512, 512],
@@ -60,6 +59,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--analyze-units",
+        "-l",
         action="store_true",
         help="Perform and display a statistical analysis of each unit against all others.",
     )
@@ -135,7 +135,7 @@ def main() -> None:
         "-t",
         "--threshold",
         type=float,
-        default=0.2, # A lower L1 distance means more similar, so we look for scores ABOVE this.
+        default=0.2,  # A lower L1 distance means more similar, so we look for scores ABOVE this.
         help="Color range distance threshold. Pairs with a score ABOVE this are considered different. Default: 0.2.",
     )
     args = parser.parse_args()
