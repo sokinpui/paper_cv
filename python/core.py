@@ -136,17 +136,107 @@ def save_different_pairs(
     print("Done saving.")
 
 
-def _analyze_and_print_unit_stats(
-    scores_per_unit: List[List[float]], method: str, positions: List[Tuple[int, int]]
+def save_highlighted_image(
+    sorted_stats: List[dict],
+    image_path: str,
+    unit_size: Tuple[int, int],
+    output_path: str,
+    color: Tuple[int, int, int] = (0, 0, 255),
+    thickness: int = 5,
 ):
     """
-    Calculates and prints statistical analysis for each unit based on its comparison scores.
+    Highlights the most different unit on the original image and saves it.
+
+    A red rectangle is drawn around the unit that is statistically most different
+    from all other units.
+
+    Args:
+        sorted_stats (List[dict]): A list of dictionaries, sorted by mean score,
+                                   each containing stats for a unit.
+        image_path (str): Path to the original image.
+        unit_size (Tuple[int, int]): The (width, height) of the units.
+        output_path (str): The path to save the highlighted image.
+        color (Tuple[int, int, int]): The BGR color of the highlight rectangle.
+                                      Default is red (0, 0, 255).
+        thickness (int): The thickness of the highlight rectangle's border.
+    """
+    import cv2
+
+    if not sorted_stats:
+        print("No stats available to determine the most different unit.")
+        return
+
+    image = cv2.imread(image_path)
+    if image is None:
+        print(f"Error: Could not read image from {image_path}")
+        return
+
+    most_different_unit_stat = sorted_stats[0]
+    unit_pos = most_different_unit_stat["pos"]  # (row, col)
+    unit_width, unit_height = unit_size
+    row, col = unit_pos
+
+    top_left = (col * unit_width, row * unit_height)
+    bottom_right = ((col + 1) * unit_width, (row + 1) * unit_height)
+
+    cv2.rectangle(image, top_left, bottom_right, color, thickness)
+
+    try:
+        cv2.imwrite(output_path, image)
+        print(f"\nSaved highlighted image to '{output_path}'")
+    except cv2.error as e:
+        print(f"Error saving highlighted image to '{output_path}': {e}")
+
+
+def _get_unit_stats(
+    scores_per_unit: List[List[float]], method: str, positions: List[Tuple[int, int]]
+) -> List[dict]:
+    """
+    Calculates statistical analysis for each unit based on its comparison scores.
 
     Args:
         scores_per_unit (List[List[float]]): A list where each inner list contains the
                                              comparison scores for a single unit against all others.
         method (str): The comparison method used, to determine score interpretation.
         positions (List[Tuple[int, int]]): The (row, col) positions of each unit.
+
+    Returns:
+        List[dict]: A list of dictionaries, sorted by mean score, each containing stats for a unit.
+    """
+    stats = []
+    for i, scores in enumerate(scores_per_unit):
+        if not scores:
+            continue
+        scores_np = np.array(scores)
+        stats.append(
+            {
+                "unit": i,
+                "pos": positions[i],
+                "mean": np.mean(scores_np),
+                "median": np.median(scores_np),
+                "std": np.std(scores_np),
+                "min": np.min(scores_np),
+                "max": np.max(scores_np),
+            }
+        )
+
+    higher_is_more_different = method in [
+        "cielab",
+        "color_clustering",
+        "color_range_hsv",
+    ]
+    sort_reverse = higher_is_more_different
+    return sorted(stats, key=lambda x: x["mean"], reverse=sort_reverse)
+
+
+def _print_unit_stats(sorted_stats: List[dict], method: str):
+    """
+    Prints statistical analysis for each unit.
+
+    Args:
+        sorted_stats (List[dict]): A list of dictionaries, sorted by mean score,
+                                   each containing stats for a unit.
+        method (str): The comparison method used, to determine score interpretation.
     """
     print("\n--- Unit-wise Statistical Analysis ---")
     print(f"Analysis based on '{method}' scores.")
@@ -167,31 +257,17 @@ def _analyze_and_print_unit_stats(
     )
     print("-" * 105)
 
-    stats = []
-    for i, scores in enumerate(scores_per_unit):
-        if not scores:
-            continue
-        scores_np = np.array(scores)
-        stats.append(
-            {
-                "unit": i,
-                "pos": positions[i],
-                "mean": np.mean(scores_np),
-                "median": np.median(scores_np),
-                "std": np.std(scores_np),
-                "min": np.min(scores_np),
-                "max": np.max(scores_np),
-            }
-        )
-
-    sort_reverse = higher_is_more_different
-    sorted_stats = sorted(stats, key=lambda x: x["mean"], reverse=sort_reverse)
-
     for stat in sorted_stats:
         pos_str = f"({stat['pos'][0]}, {stat['pos'][1]})"
         print(
             "{:<10} {:<15} {:<15.4f} {:<15.4f} {:<15.4f} {:<15.4f} {:<15.4f}".format(
-                stat["unit"], pos_str, stat["mean"], stat["median"], stat["std"], stat["min"], stat["max"]
+                stat["unit"],
+                pos_str,
+                stat["mean"],
+                stat["median"],
+                stat["std"],
+                stat["min"],
+                stat["max"],
             )
         )
 
@@ -282,6 +358,7 @@ def find_different_units_gpu(
     method_params: dict = None,
     output_dir: str = None,
     analyze_units: bool = False,
+    highlight_output_path: str = None,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using GPU.
@@ -295,6 +372,8 @@ def find_different_units_gpu(
         method_params (dict): Optional dictionary of parameters for the comparison method.
         output_dir (str): Directory to save different pairs.
         analyze_units (bool): If True, perform and print a statistical analysis for each unit.
+        highlight_output_path (str): If provided, saves the original image with the most
+                                     different unit highlighted. Requires `analyze_units`.
     """
     image_units = divide_image_into_units(image_path, unit_size)
 
@@ -388,7 +467,12 @@ def find_different_units_gpu(
         ]
 
     if analyze_units:
-        _analyze_and_print_unit_stats(scores_per_unit, method, positions)
+        sorted_stats = _get_unit_stats(scores_per_unit, method, positions)
+        _print_unit_stats(sorted_stats, method)
+        if highlight_output_path:
+            save_highlighted_image(
+                sorted_stats, image_path, unit_size, highlight_output_path
+            )
 
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -413,6 +497,7 @@ def find_different_units_cpu(
     method_params: dict = None,
     output_dir: str = None,
     analyze_units: bool = False,
+    highlight_output_path: str = None,
 ) -> None:
     """
     Finds and reports image units that are different based on SSIM using CPU
@@ -427,6 +512,8 @@ def find_different_units_cpu(
         method_params (dict): Optional dictionary of parameters for the comparison method.
         output_dir (str): Directory to save different pairs.
         analyze_units (bool): If True, perform and print a statistical analysis for each unit.
+        highlight_output_path (str): If provided, saves the original image with the most
+                                     different unit highlighted. Requires `analyze_units`.
     """
     image_units = divide_image_into_units(image_path, unit_size)
 
@@ -492,7 +579,12 @@ def find_different_units_cpu(
         for idx1, idx2, score in all_scores_info:
             scores_per_unit[idx1].append(score)
             scores_per_unit[idx2].append(score)
-        _analyze_and_print_unit_stats(scores_per_unit, method, positions)
+        sorted_stats = _get_unit_stats(scores_per_unit, method, positions)
+        _print_unit_stats(sorted_stats, method)
+        if highlight_output_path:
+            save_highlighted_image(
+                sorted_stats, image_path, unit_size, highlight_output_path
+            )
 
     end_time = time.time()
     elapsed_time = end_time - start_time

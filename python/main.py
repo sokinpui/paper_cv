@@ -63,6 +63,15 @@ def main() -> None:
         action="store_true",
         help="Perform and display a statistical analysis of each unit against all others.",
     )
+    parser.add_argument(
+        "--highlight",
+        "-H",
+        type=str,
+        default=None,
+        metavar="OUTPUT_PATH",
+        help="Save the original image with the most different unit highlighted. "
+        "Requires --analyze-units to be enabled.",
+    )
 
     # Create subparsers for each method
     subparsers = parser.add_subparsers(
@@ -139,6 +148,10 @@ def main() -> None:
         help="Color range distance threshold. Pairs with a score ABOVE this are considered different. Default: 0.2.",
     )
     args = parser.parse_args()
+
+    if args.highlight and not args.analyze_units:
+        parser.error("--highlight requires --analyze-units to be enabled.")
+
     unit_size = (args.unit_size[0], args.unit_size[1])
 
     method_params = {}
@@ -154,6 +167,7 @@ def main() -> None:
             method_params=method_params,
             output_dir=args.output,
             analyze_units=args.analyze_units,
+            highlight_output_path=args.highlight,
         )
     else:
         find_different_units_cpu(
@@ -164,6 +178,7 @@ def main() -> None:
             method_params=method_params,
             output_dir=args.output,
             analyze_units=args.analyze_units,
+            highlight_output_path=args.highlight,
         )
 
 
